@@ -4,15 +4,43 @@ import org.junit.Test;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+import java.security.*;
 
 public class JceMasterKeyTest {
 
     private static final SecretKey SECRET_KEY = new SecretKeySpec(new byte[1], "AES");
+    private static final PrivateKey PRIVATE_KEY;
+    private static final PublicKey PUBLIC_KEY;
+
+    static {
+        try {
+            KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+            KeyPair keyPair = keyPairGenerator.generateKeyPair();
+            PUBLIC_KEY = keyPair.getPublic();
+            PRIVATE_KEY = keyPair.getPrivate();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private JceMasterKey jceGetInstance(final String algorithmName) {
+        return JceMasterKey.getInstance(SECRET_KEY, "mockProvider", "mockKey", algorithmName);
+    }
+
+    private JceMasterKey jceGetInstanceAsymmetric(final String algorithmName) {
+        return JceMasterKey.getInstance(PUBLIC_KEY, PRIVATE_KEY, "mockProvider",  "mockKey",
+                algorithmName);
+    }
 
     @Test(expected = IllegalArgumentException.class)
     public void testGetInstanceInvalidWrappingAlgorithm() {
-        JceMasterKey.getInstance(SECRET_KEY, "mockProvider", "mockKey",
-                "blatently/unsupported/algorithm");
+        jceGetInstance("blatently/unsupported/algorithm");
+    }
+
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void testGetInstanceAsymmetricInvalidWrappingAlgorithm() {
+        jceGetInstanceAsymmetric("rsa/ec/unsupportedAlgorithm");
     }
 
     /**
@@ -21,10 +49,22 @@ public class JceMasterKeyTest {
      * Relies on passing an invalid algorithm name to result in an Exception.
      */
     @Test
-    public void testGetInstanceCaseInsensitive() {
-        JceMasterKey.getInstance(SECRET_KEY, "mockProvider", "mockKey",
-                "aes/gcm/nopadding");
-        JceMasterKey.getInstance(SECRET_KEY, "mockProvider", "mockKey",
-                "AES/GCM/NoPadding");
+    public void testGetInstanceCase1() {
+        jceGetInstance("aes/gcm/nopadding");
+    }
+
+    @Test
+    public void testGetInstanceCase2() {
+        jceGetInstance("AES/GCm/NOpadding");
+    }
+
+    @Test
+    public void testGetInstanceAsymmetric1() {
+        jceGetInstanceAsymmetric("rsa/ecb/oaepwithsha-256andmgf1padding");
+    }
+
+    @Test
+    public void testGetInstanceAsymmetric2() {
+        jceGetInstanceAsymmetric("RSA/ECB/OAepwithsha-256andmgf1padding");
     }
 }
