@@ -49,22 +49,22 @@ public class JceMasterKeyTest {
      * Relies on passing an invalid algorithm name to result in an Exception.
      */
     @Test
-    public void testGetInstanceCase1() {
+    public void testGetInstanceAllLowercase() {
         jceGetInstance("aes/gcm/nopadding");
     }
 
     @Test
-    public void testGetInstanceCase2() {
+    public void testGetInstanceMixedCasing() {
         jceGetInstance("AES/GCm/NOpadding");
     }
 
     @Test
-    public void testGetInstanceAsymmetric1() {
+    public void testGetInstanceAsymmetricAllLowercase() {
         jceGetInstanceAsymmetric("rsa/ecb/oaepwithsha-256andmgf1padding");
     }
 
     @Test
-    public void testGetInstanceAsymmetric2() {
+    public void testGetInstanceAsymmetricMixedCasing() {
         jceGetInstanceAsymmetric("RSA/ECB/OAepwithsha-256andmgf1padding");
     }
 }
