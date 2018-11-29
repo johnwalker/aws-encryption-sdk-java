@@ -109,13 +109,8 @@ public enum CryptoAlgorithm {
      * the CryptoAlgorithm class
      */
     static {
-        try {
-            BouncyCastleConfiguration.class.newInstance();
-        } catch (Throwable e) {
-
-        }
+        BouncyCastleConfiguration.init();
     }
-
 
     /*
      * Create a mapping between the CiphertextType object and its byte value representation. Make
