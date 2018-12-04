@@ -13,7 +13,9 @@
 
 package com.amazonaws.encryptionsdk.jce;
 
+import static com.amazonaws.encryptionsdk.CryptoAlgorithm.ALG_AES_256_GCM_IV12_TAG16_NO_KDF;
 import static com.amazonaws.encryptionsdk.internal.RandomBytesGenerator.generate;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
@@ -31,10 +33,18 @@ import java.security.Security;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import javax.security.auth.x500.X500Principal;
 
+import com.amazonaws.encryptionsdk.DataKey;
+import com.amazonaws.encryptionsdk.EncryptedDataKey;
+import com.sun.tools.javac.util.List;
 import org.bouncycastle.asn1.x509.X509Name;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.x509.X509V3CertificateGenerator;
@@ -51,16 +61,20 @@ import com.amazonaws.encryptionsdk.multi.MultipleProviderFactory;
 public class KeyStoreProviderTest {
     private static final SecureRandom RND = new SecureRandom();
     private static final KeyPairGenerator KG;
+    private static final KeyGenerator SKG;
     private static final byte[] PLAINTEXT = generate(1024);
     private static final char[] PASSWORD = "Password".toCharArray();
     private static final KeyStore.PasswordProtection PP = new PasswordProtection(PASSWORD);
     private KeyStore ks;
+    private KeyStore jceks;
 
     static {
         try {
             Security.addProvider(new BouncyCastleProvider());
             KG = KeyPairGenerator.getInstance("RSA", "BC");
             KG.initialize(2048);
+
+            SKG = KeyGenerator.getInstance("AES");
         } catch (Exception ex) {
             throw new RuntimeException(ex);
         }
@@ -70,12 +84,16 @@ public class KeyStoreProviderTest {
     public void setup() throws Exception {
         ks = KeyStore.getInstance(KeyStore.getDefaultType());
         ks.load(null, PASSWORD);
+
+        jceks = KeyStore.getInstance("JCEKS");
+        jceks.load(null, PASSWORD);
     }
 
     @Test
     public void singleKeyPkcs1() throws GeneralSecurityException {
         addEntry("key1");
         final KeyStoreProvider mkp = new KeyStoreProvider(ks, PP, "KeyStore", "RSA/ECB/PKCS1Padding", "key1");
+        System.out.println(ks.isKeyEntry("key1"));
         final JceMasterKey mk1 = mkp.getMasterKey("key1");
         final AwsCrypto crypto = new AwsCrypto();
         final CryptoResult<byte[], JceMasterKey> ct = crypto.encryptData(mkp, PLAINTEXT);
@@ -184,6 +202,32 @@ public class KeyStoreProviderTest {
         assertEquals(1, result.getMasterKeys().size());
         assertEquals(mk2, result.getMasterKeys().get(0));
     }
+
+    @Test
+    public void testIssue85() throws GeneralSecurityException {
+        addSymmetricEntry("key1");
+
+        final KeyStoreProvider mkp = new KeyStoreProvider(jceks, PP, "KeyStore", "AES/GCM/NoPadding",
+                "key1");
+
+        @SuppressWarnings("unused")
+        final JceMasterKey mk1 = mkp.getMasterKey("key1");
+        Map<String, String> encryptionContext = new HashMap<>();
+        encryptionContext.put("example", "context");
+
+        // Create a new key using a specific master key
+        DataKey<JceMasterKey> dataKey = mk1.generateDataKey(ALG_AES_256_GCM_IV12_TAG16_NO_KDF, encryptionContext);
+
+        // Decrypt using the key provider
+        mkp.decryptDataKey(ALG_AES_256_GCM_IV12_TAG16_NO_KDF, List.of(dataKey), encryptionContext);
+
+        // Encrypt the same key again
+        DataKey<JceMasterKey> dataKeyReencrypted = mk1.encryptRawKey(dataKey.getKey(), dataKey.getKey().getEncoded(), encryptionContext);
+
+        // Decrypt using the key provider
+        mkp.decryptDataKey(ALG_AES_256_GCM_IV12_TAG16_NO_KDF, List.of(dataKeyReencrypted), encryptionContext);
+    }
+
 
     @Test
     public void escrowAndSymmetricSecondProvider() throws GeneralSecurityException {
@@ -299,6 +343,12 @@ public class KeyStoreProviderTest {
 
         ks.setEntry(alias, new KeyStore.TrustedCertificateEntry(cert), null);
     }
+
+    private void addSymmetricEntry(final String alias) throws GeneralSecurityException {
+        SecretKey secretKey = SKG.generateKey();
+        jceks.setEntry(alias, new KeyStore.SecretKeyEntry(secretKey), PP);
+    }
+
 
     private void copyPublicPart(final KeyStore src, final KeyStore dst, final String alias) throws KeyStoreException {
         Certificate cert = src.getCertificate(alias);
