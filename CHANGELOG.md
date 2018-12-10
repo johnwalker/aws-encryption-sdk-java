@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.6
+## 1.3.6 -- 2018-12-10
 
 ### Minor Changes
 * Fixed typos in Exception messages (excryption -> encryption) #78
